@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LUMINA — The Sovereign Governance Ledger</title>
+  <meta name="description" content="LUMINA is a Proof-of-Integrity Protocol using AI and Blockchain to audit government data and anchor public trust." />
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/auth.css" />
+  
+  <!-- Leaflet Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  
+  <!-- Firebase SDKs (v10+) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, RecaptchaVerifier, signInWithPhoneNumber, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+    // Your web app's Firebase configuration
+    // NOTE: You must replace these with your actual Firebase project config from the Firebase Console!
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "your-project.firebaseapp.com",
+      projectId: "your-project",
+      storageBucket: "your-project.appspot.com",
+      messagingSenderId: "your-sender-id",
+      appId: "your-app-id"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    
+    // Export for use in app.js
+    window.fbAuth = auth;
+    window.RecaptchaVerifier = RecaptchaVerifier;
+    window.signInWithPhoneNumber = signInWithPhoneNumber;
+    window.sendSignInLinkToEmail = sendSignInLinkToEmail;
+    window.isSignInWithEmailLink = isSignInWithEmailLink;
+    window.signInWithEmailLink = signInWithEmailLink;
+  </script>
+
+  <!-- Core Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- TensorFlow.js for Real Client-Side ML -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0"></script>
+  
+  <!-- Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+  <style>
+    /* ─ Map dark tiles override ─ */
+    .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) saturate(0.7) brightness(0.85); }
+    .leaflet-container { background: #02030a; }
+    .leaflet-popup-content-wrapper { background: #0d1424; color: #f0f4ff; border: 1px solid rgba(0,212,255,0.2); border-radius: 12px; }
+    .leaflet-popup-tip { background: #0d1424; }
+  </style>
+</head>
+<body>
+
+<!-- ── Starfield Canvas ── -->
+<canvas id="starfield"></canvas>
+
+<!-- ── Ambient Orbs ── -->
+<div class="ambient-orb orb-1"></div>
+<div class="ambient-orb orb-2"></div>
+<div class="ambient-orb orb-3"></div>
+
+<!-- ── Navigation ── -->
+<nav style="display:none">
+  <div class="nav-brand" onclick="showPage('landing')" style="cursor:pointer">
+    <div class="nav-logo">LM</div>
+    <div>
+      <div class="nav-brand-name">LUMINA</div>
+      <div class="nav-tagline">Sovereign Governance Ledger</div>
+    </div>
+  </div>
+
+  <div class="nav-links" id="navLinks">
+    <button class="nav-link active" onclick="showPage('landing')" id="nav-landing">Home</button>
+    <button class="nav-link" onclick="showPage('dashboard')" id="nav-dashboard">Dashboard</button>
+    <button class="nav-link" onclick="showPage('explorer')" id="nav-explorer">Explorer</button>
+    <button class="nav-link" onclick="showPage('watchdog')" id="nav-watchdog">Watchdog</button>
+    <button class="nav-link" onclick="showPage('forecast')" id="nav-forecast">Forecast</button>
+    <button class="nav-link" onclick="showPage('auditor')" id="nav-auditor">AI Auditor</button>
+    <button class="nav-link" onclick="showPage('chain')" id="nav-chain">Trust Chain</button>
+    <button class="nav-link" onclick="showPage('deepscan')" id="nav-deepscan">Deep-Scan</button>
+    <button class="nav-link" onclick="showPage('adp')" id="nav-adp">ADP Patent</button>
+    <button class="nav-link" onclick="showPage('entities')" id="nav-entities">Entities</button>
+    <button class="nav-link" onclick="showPage('web')" id="nav-web">Money Web</button>
+    <button class="nav-link" onclick="logout()" style="color:var(--accent-red)">Logout</button>
+  </div>
+  <button class="hamburger" id="hamburger" onclick="toggleMobileNav()" aria-label="Menu">&#9776;</button>
+
+  <div class="nav-live-badge">
+    <div class="live-dot"></div> LIVE AUDIT
+  </div>
+</nav>
+
+<!-- ══ TOAST CONTAINER ══ -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ══ APP ══ -->
+<div id="app">
+
+<!-- ══════════════════════════════════════════
+     PAGE 0: AUTH (LOGIN/SIGNUP)
+══════════════════════════════════════════ -->
+<div class="page active" id="page-auth">
+  <div class="auth-container">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-logo">LM</div>
+        <h2 class="auth-title" id="authTitle">Login to LUMINA</h2>
+        <p class="auth-subtitle" id="authSubtitle">The Sovereign Governance Ledger</p>
+      </div>
+
+      <div class="auth-tabs">
+        <div class="auth-tab active" id="tabEmail" onclick="switchAuthTab('email')">Email</div>
+        <div class="auth-tab" id="tabMobile" onclick="switchAuthTab('mobile')">Mobile Number</div>
+      </div>
+
+      <div id="emailForm" class="auth-form">
+        <div class="form-group">
+          <label class="form-label">Email Address</label>
+          <div class="input-with-action">
+            <input type="email" id="emailInput" class="input-field" placeholder="name@example.com" required>
+            <button class="btn btn-primary btn-sm" id="btnGetOtpEmail" onclick="sendOTP('email')">Get OTP</button>
+          </div>
+          <div id="emailOtpSent" class="otp-sent-msg">
+            <i class="fas fa-check-circle"></i> OTP sent to your email!
+          </div>
+          <div id="resendEmailContainer" class="resend-container" style="display:none">
+            <span class="resend-link disabled" id="resendEmailLink" onclick="sendOTP('email')">Resend OTP</span>
+            <span class="timer-text" id="emailTimer">00:60</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Verification OTP</label>
+          <input type="text" id="emailOtp" class="input-field" placeholder="Enter 6-digit OTP" maxlength="6">
+        </div>
+        <button class="btn btn-primary btn-lg w-full" id="btnLoginEmail" onclick="handleAuth('email')">Login to Dashboard</button>
+      </div>
+
+      <div id="mobileForm" class="auth-form" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Mobile Number</label>
+          <div class="input-with-action">
+            <input type="tel" id="mobileInput" class="input-field" placeholder="+91 98765 43210" required>
+            <button class="btn btn-primary btn-sm" id="btnGetOtpMobile" onclick="sendOTP('mobile')">Get OTP</button>
+          </div>
+          <div id="recaptcha-container"></div> <!-- Firebase Recaptcha -->
+          <div id="mobileOtpSent" class="otp-sent-msg">
+            <i class="fas fa-check-circle"></i> OTP sent to your mobile!
+          </div>
+          <div id="resendMobileContainer" class="resend-container" style="display:none">
+            <span class="resend-link disabled" id="resendMobileLink" onclick="sendOTP('mobile')">Resend OTP</span>
+            <span class="timer-text" id="mobileTimer">00:60</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Verification OTP</label>
+          <input type="text" id="mobileOtp" class="input-field" placeholder="Enter 6-digit OTP" maxlength="6">
+        </div>
+        <button class="btn btn-primary btn-lg w-full" id="btnLoginMobile" onclick="handleAuth('mobile')">Login to Dashboard</button>
+      </div>
+
+      <div class="auth-footer">
+        Don't have an account? <span class="auth-link" onclick="toggleSignup()">Sign Up</span>
+      </div>
+    </div>
+  </div>
+</div><!-- /page-auth -->
+
+<!-- ══════════════════════════════════════════
+     PAGE 1: LANDING
+══════════════════════════════════════════ -->
+<div class="page" id="page-landing">
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-eyebrow">
+      <i class="fas fa-shield-halved"></i>
+      Proof-of-Integrity Protocol · Powered by AI + Blockchain
+    </div>
+    <h1 class="hero-title">LUMINA</h1>
+    </p>
+    
+    <div class="forensic-search-wrap">
+      <i class="fas fa-search search-icon-fixed"></i>
+      <input type="text" class="forensic-search-input" placeholder="Search for a politician, company, or project..." id="forensicSearch" onkeyup="handleForensicSearch(event)">
+    </div>
+
+    <!-- Integrity Dial -->
+    <div class="integrity-hub">
+      <div class="integrity-dial-container">
+        <div class="integrity-dial-bg" id="heroDialBg">
+          <div class="integrity-dial-inner">
+            <div class="integrity-percent" id="heroPct">98%</div>
+            <div class="integrity-label">VERIFIED</div>
+          </div>
+        </div>
+      </div>
+      <div class="integrity-title">NATIONAL INTEGRITY SCORE</div>
+      <div class="integrity-sub">Based on 12,847 verified transactions · Last audited 4 min ago</div>
+    </div>
+
+    <div class="hero-ctas">
+      <button class="btn btn-primary btn-lg" onclick="showPage('dashboard')">
+        <i class="fas fa-chart-network"></i> Open Command Center
+      </button>
+      <button class="btn btn-secondary btn-lg" onclick="showPage('auditor')">
+        <i class="fas fa-robot"></i> Ask AI Auditor
+      </button>
+      <button class="btn btn-ghost btn-lg" onclick="showPage('chain')">
+        <i class="fas fa-link"></i> View Trust Chain
+      </button>
+    </div>
+
+    <!-- Stats Bar -->
+    <div class="stats-bar">
+      <div class="stat-item">
+        <div class="stat-value" data-count="12847">0</div>
+        <div class="stat-label">Transactions Verified</div>
+        <div class="stat-delta delta-up"><i class="fas fa-arrow-up"></i> 147 today</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" data-count="34">0</div>
+        <div class="stat-label">Anomalies Flagged</div>
+        <div class="stat-delta delta-down"><i class="fas fa-arrow-up"></i> 3 critical</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">₹4.7T</div>
+        <div class="stat-label">Budget Audited</div>
+        <div class="stat-delta delta-up"><i class="fas fa-check"></i> 98% reconciled</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" data-count="2891">0</div>
+        <div class="stat-label">Blocks on Antigravity</div>
+        <div class="stat-delta delta-up"><i class="fas fa-cube"></i> +12 new</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">0ms</div>
+        <div class="stat-label">Avg Verification Time</div>
+        <div class="stat-delta delta-up"><i class="fas fa-bolt"></i> Sub-second</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 Pillars -->
+  <section class="section" style="padding-top:0">
+    <div class="section-header">
+      <div>
+        <div class="section-eyebrow">Architecture</div>
+        <h2 class="section-title">Five-Pillar Proof-of-Integrity Stack</h2>
+        <p class="section-sub">Every layer works together to create mathematical accountability that cannot be faked, erased, or hidden.</p>
+      </div>
+    </div>
+
+    <div class="grid-3" style="gap:24px">
+      <div class="pillar-card">
+        <div class="pillar-number">I</div>
+        <div class="pillar-icon-wrap">🔍</div>
+        <div class="pillar-name">PILLAR I</div>
+        <div class="pillar-title">Deep-Scan Ingestion Engine</div>
+        <p class="pillar-desc">Vision-LLM pipeline that extracts tabular data from "Dark PDFs" (scanned images). Context-Aware Parser maps line items to XBRL global standards.</p>
+        <span class="pillar-tag">PATENTABLE · AI/OCR</span>
+      </div>
+      <div class="pillar-card">
+        <div class="pillar-number">II</div>
+        <div class="pillar-icon-wrap">⛓️</div>
+        <div class="pillar-name">PILLAR II</div>
+        <div class="pillar-title">Antigravity Trust Layer</div>
+        <p class="pillar-desc">Every ingestion triggers a Merkle Tree Hash posted to the Antigravity chain. One-click verification — if the hash fails, the UI turns red. Mathematical Accountability.</p>
+        <span class="pillar-tag">BLOCKCHAIN · IMMUTABLE</span>
+      </div>
+      <div class="pillar-card">
+        <div class="pillar-number">III</div>
+        <div class="pillar-icon-wrap">🔬</div>
+        <div class="pillar-name">PILLAR III</div>
+        <div class="pillar-title">Anomaly Detection Watchdog</div>
+        <p class="pillar-desc">Isolation Forest ML scans for Ghost Projects and Bid Rigging. Flags high-risk contracts automatically with weighted Risk Scores and explainable alerts.</p>
+        <span class="pillar-tag">ML · ISOLATION FOREST</span>
+      </div>
+      <div class="pillar-card">
+        <div class="pillar-number">IV</div>
+        <div class="pillar-icon-wrap">🤖</div>
+        <div class="pillar-name">PILLAR IV</div>
+        <div class="pillar-title">Conversational AI Auditor</div>
+        <p class="pillar-desc">Specialized LLM trained on entire city/national budgets. Ask natural-language questions and get real-time charts + analysis. Your 24/7 AI watchdog.</p>
+        <span class="pillar-tag">LLM · NLP · CHARTS</span>
+      </div>
+      <div class="pillar-card" style="background:linear-gradient(135deg,rgba(0,212,255,0.05),rgba(139,92,246,0.08)); border-color:rgba(0,212,255,0.2)">
+        <div class="pillar-number" style="opacity:0.15">★</div>
+        <div class="pillar-icon-wrap" style="background:linear-gradient(135deg,rgba(0,212,255,0.2),rgba(139,92,246,0.2))">🛰️</div>
+        <div class="pillar-name" style="color:var(--accent-violet)">PATENT PENDING</div>
+        <div class="pillar-title">Cross-Silo Reconciliation ADP</div>
+        <p class="pillar-desc">Automated Discrepancy Protocol: Verifies expenditure filings against bank settlement hashes <em>and</em> satellite-imaged project progress. Is the bridge actually built?</p>
+        <span class="pillar-tag" style="background:rgba(0,212,255,0.1);border-color:rgba(0,212,255,0.25);color:var(--accent-cyan)">WORLD FIRST · SATELLITE+AI</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Closing Argument -->
+  <section style="padding:80px 24px; text-align:center; position:relative; overflow:hidden;">
+    <div style="max-width:800px; margin:0 auto; position:relative; z-index:2;">
+      <div class="section-eyebrow" style="justify-content:center;display:flex">The Closing Argument</div>
+      <blockquote style="font-family:'Orbitron',sans-serif; font-size:clamp(16px,2.5vw,24px); font-weight:600; line-height:1.6; color:var(--text-primary); margin-top:16px; border:none; padding:32px; background:var(--bg-panel); border-radius:var(--radius-xl); border:1px solid rgba(0,212,255,0.15);">
+        "104 teams gave you <span style="color:var(--accent-cyan)">a window</span> into the government.<br/>
+        We gave you <span style="color:var(--accent-green)">an Auditor that never sleeps</span>.<br/>
+        LUMINA uses the Antigravity chain to ensure that once a promise is made in the budget,<br/>
+        <span style="color:var(--accent-violet)">it is etched in code.</span><br/>
+        It cannot be erased. It cannot be hidden.<br/>
+        And with our AI, <span style="color:var(--accent-amber)">it cannot be misunderstood.</span>"
+      </blockquote>
+      <div style="margin-top:24px; font-size:13px; color:var(--text-muted)">— LUMINA · The New Standard for Digital Democracy</div>
+      <button class="btn btn-primary btn-lg" style="margin-top:32px" onclick="showPage('dashboard')">
+        <i class="fas fa-rocket"></i> Launch Command Center
+      </button>
+    </div>
+  </section>
+
+</div><!-- /page-landing -->
+
+
+<!-- ══════════════════════════════════════════
+     PAGE 2: DASHBOARD
+══════════════════════════════════════════ -->
+<div class="page" id="page-dashboard">
+  <div class="dashboard-layout">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="pillar-strip" style="margin-bottom:16px">
+        <div class="dot" style="background:var(--accent-green)"></div>
+        All systems operational
+      </div>
+
+      <div class="sidebar-section-label">Command Center</div>
+      <div class="sidebar-item active" onclick="activateSidebar(this)">
+        <span class="sico">📊</span> Overview
+      </div>
+      <div class="sidebar-item" onclick="activateSidebar(this); showPage('explorer')">
+        <span class="sico">💰</span> Budget Explorer
+      </div>
+
+      <div class="sidebar-section-label">AI Engines</div>
+      <div class="sidebar-item" onclick="activateSidebar(this); showPage('watchdog')">
+        <span class="sico">🔬</span> Anomaly Watchdog
+        <span class="sidebar-badge">34</span>
+      </div>
+      <div class="sidebar-item" onclick="activateSidebar(this); showPage('forecast')">
+        <span class="sico">🔮</span> Neural Forecast
+      </div>
+      <div class="sidebar-item" onclick="activateSidebar(this); showPage('auditor')">
+        <span class="sico">🤖</span> AI Auditor
+      </div>
+
+      <div class="sidebar-section-label">Blockchain</div>
+      <div class="sidebar-item" onclick="activateSidebar(this); showPage('chain')">
+        <span class="sico">⛓️</span> Trust Chain
+        <span class="sidebar-badge green">98%</span>
+      </div>
+
+      <div class="sidebar-section-label">Forensics</div>
+      <div class="sidebar-item" onclick="activateSidebar(this); showPage('entities')">
+        <span class="sico">🏛️</span> Entity Ledger
+      </div>
+      <div class="sidebar-item" onclick="activateSidebar(this); showPage('web')">
+        <span class="sico">🕸️</span> Money Web
+      </div>
+
+      <div style="margin-top:auto; padding-top:24px;">
+        <!-- API Configuration Panel -->
+        <div style="background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:var(--radius-md);padding:16px;font-size:12px;margin-bottom:12px">
+          <div style="color:var(--accent-amber);font-weight:700;margin-bottom:8px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;display:flex;align-items:center;gap:8px">
+            <i class="fas fa-plug"></i> LIVE DATA SYNC
+          </div>
+          <div style="margin-bottom:8px; display:flex; gap:4px">
+            <input type="password" class="input-field" id="googleApiKey" placeholder="Enter Google API Key..." style="font-size:10px; padding:6px 8px; flex:1" onkeyup="if(event.key==='Enter') saveApiKey(this.value)"/>
+            <button class="btn btn-primary" style="padding:6px 8px; font-size:10px" onclick="saveApiKey(document.getElementById('googleApiKey').value)">Save</button>
+            <button class="btn btn-ghost" style="padding:6px 8px; font-size:10px" onclick="clearApiKey()">Clear</button>
+          </div>
+          <div id="syncStatus" style="font-size:10px; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center">
+            <span><span class="scan-dot" style="background:var(--text-muted); animation:none"></span> Disconnected</span>
+            <button class="btn-ghost" style="padding:2px 6px; font-size:9px" onclick="testApiSync()">Retry</button>
+          </div>
+        </div>
+
+        <div style="background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:var(--radius-md);padding:16px;font-size:12px;">
+          <div style="color:var(--accent-cyan);font-weight:700;margin-bottom:8px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;">ANTIGRAVITY CHAIN</div>
+          <div style="color:var(--text-muted);margin-bottom:4px;">Current Block</div>
+          <div style="font-family:'JetBrains Mono',monospace;color:var(--text-primary);font-size:11px;" id="sbCurrentBlock">#2891</div>
+          <div style="color:var(--text-muted);margin-top:8px;margin-bottom:4px;">Last Hash</div>
+          <div style="font-family:'JetBrains Mono',monospace;color:var(--accent-cyan);font-size:10px;overflow:hidden;text-overflow:ellipsis;" id="sbLastHash">0x3f8a...d92c</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main-content">
+      <!-- KPI Row -->
+      <div class="grid-4" style="margin-bottom:28px">
+        <div class="kpi-card cyan">
+          <div class="kpi-icon cyan"><i class="fas fa-check-double"></i></div>
+          <div class="kpi-value" style="color:var(--accent-cyan)">98.3<span style="font-size:18px">%</span></div>
+          <div class="kpi-label">Integrity Score</div>
+          <div class="kpi-trend delta-up"><i class="fas fa-arrow-up"></i> +0.4% from yesterday</div>
+        </div>
+        <div class="kpi-card red">
+          <div class="kpi-icon red"><i class="fas fa-triangle-exclamation"></i></div>
+          <div class="kpi-value" style="color:var(--accent-red)">34</div>
+          <div class="kpi-label">Anomalies Detected</div>
+          <div class="kpi-trend" style="color:var(--accent-red)"><i class="fas fa-circle-dot"></i> 3 critical, 12 high</div>
+        </div>
+        <div class="kpi-card green">
+          <div class="kpi-icon green"><i class="fas fa-cube"></i></div>
+          <div class="kpi-value" style="color:var(--accent-green)">2,891</div>
+          <div class="kpi-label">Blocks Anchored</div>
+          <div class="kpi-trend delta-up"><i class="fas fa-arrow-up"></i> +12 this hour</div>
+        </div>
+        <div class="kpi-card amber">
+          <div class="kpi-icon amber"><i class="fas fa-file-invoice"></i></div>
+          <div class="kpi-value" style="color:var(--accent-amber)">₹4.7T</div>
+          <div class="kpi-label">Budget Audited</div>
+          <div class="kpi-trend delta-up"><i class="fas fa-check"></i> 98% reconciled</div>
+        </div>
+      </div>
+
+      <!-- Mission Control Row -->
+      <div class="grid-3" style="margin-bottom:28px">
+        <div class="panel" style="grid-column: span 2">
+          <div class="panel-header">
+            <div class="panel-title"><span class="icon">📡</span> Live Governance Audit Stream</div>
+            <span class="scan-indicator"><span class="scan-dot"></span> Real-time Sync</span>
+          </div>
+          <div class="panel-body" style="height:180px; overflow:hidden; position:relative; background:#050811; border-radius:var(--radius-sm)">
+            <div id="liveAuditStream" style="font-family:'JetBrains Mono', monospace; font-size:10px; line-height:1.6; color:var(--text-muted); padding:12px">
+              <!-- Streaming content injected by JS -->
+            </div>
+            <div style="position:absolute; bottom:0; left:0; right:0; height:40px; background:linear-gradient(transparent, #050811); pointer-events:none"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title"><span class="icon">🛡️</span> System Health</div>
+          </div>
+          <div class="panel-body">
+            <div style="display:flex; flex-direction:column; gap:16px">
+              <div>
+                <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:6px">
+                  <span class="text-muted">Chain Integrity</span>
+                  <span class="text-green">99.99%</span>
+                </div>
+                <div class="progress-bar"><div class="progress-fill" style="width:99.99%; background:var(--accent-green)"></div></div>
+              </div>
+              <div>
+                <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:6px">
+                  <span class="text-muted">AI Auditor Accuracy</span>
+                  <span class="text-cyan">98.4%</span>
+                </div>
+                <div class="progress-bar"><div class="progress-fill" style="width:98.4%; background:var(--accent-cyan)"></div></div>
+              </div>
+              <div>
+                <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:6px">
+                  <span class="text-muted">Real-world Data Sync</span>
+                  <span id="syncHealthText" class="text-amber">Idle</span>
+                </div>
+                <div class="progress-bar"><div id="syncHealthBar" class="progress-fill" style="width:0%; background:var(--accent-amber)"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts Row -->
+      <div class="grid-2" style="margin-bottom:28px">
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title"><span class="icon">📈</span> Budget Allocation vs Disbursement</div>
+            <select class="input-field" style="width:auto;padding:4px 10px;font-size:11px">
+              <option>FY 2024-25</option><option>FY 2023-24</option><option>FY 2022-23</option>
+            </select>
+          </div>
+          <div class="panel-body">
+            <div class="chart-wrap"><canvas id="dashChart1"></canvas></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title"><span class="icon">🥧</span> Sector Spending Distribution</div>
+            <span class="scan-indicator"><span class="scan-dot"></span> Live</span>
+          </div>
+          <div class="panel-body">
+            <div class="chart-wrap"><canvas id="dashChart2"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Transactions + Blockchain Feed -->
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title"><span class="icon">📋</span> Recent Audit Events</div>
+            <button class="btn btn-ghost btn-sm">View All</button>
+          </div>
+          <div class="panel-body" style="padding:0">
+            <table class="data-table">
+              <thead><tr>
+                <th>Transaction</th><th>Amount</th><th>Status</th><th>Chain</th>
+              </tr></thead>
+              <tbody id="dashTxTable"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title"><span class="icon">⛓️</span> Live Block Feed</div>
+            <div class="scan-indicator"><span class="scan-dot"></span> Antigravity Chain</div>
+          </div>
+          <div class="panel-body" style="padding:16px">
+            <div class="chain-feed" id="dashChainFeed"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div><!-- /page-dashboard -->
+
+
+<!-- ══════════════════════════════════════════
+     PAGE 3: BUDGET EXPLORER
+══════════════════════════════════════════ -->
+<div class="page" id="page-explorer">
+  <div class="section" style="padding-top:100px">
+    <div class="section-header">
+      <div>
+        <div class="section-eyebrow">Pillar I · Deep-Scan Ingestion</div>
+        <h2 class="section-title">Budget Explorer & Heatmap</h2>
+        <p class="section-sub">Click any district on the map to see verified tax expenditures. All data anchored on the Antigravity chain.</p>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center;">
+        <select class="input-field" id="mapSectorFilter" style="width:auto" onchange="updateMapMarkers()">
+          <option value="infrastructure">Infrastructure</option>
+          <option value="healthcare">Healthcare</option>
+          <option value="education">Education</option>
+          <option value="defence">Defence</option>
+        </select>
+        <select class="input-field" id="mapYearFilter" style="width:auto" onchange="updateMapMarkers()">
+          <option value="2024">FY 2024-25</option>
+          <option value="2023">FY 2023-24</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Map -->
+    <div class="panel" style="margin-bottom:28px">
+      <div class="panel-header">
+        <div class="panel-title"><span class="icon">🗺️</span> Geographic Expenditure Heatmap</div>
+        <div style="display:flex;gap:8px;font-size:11px;align-items:center;">
+          <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:#10b981;display:inline-block"></span>Verified</span>
+          <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;display:inline-block"></span>Partial</span>
+          <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:#ef4444;display:inline-block"></span>Flagged</span>
+        </div>
+      </div>
+      <div class="panel-body" style="padding:0">
+        <div id="map"></div>
+      </div>
+    </div>
+
+    <!-- Citizen Verification Loop -->
+    <div class="panel" style="margin-top:28px">
+      <div class="panel-header">
+        <div class="panel-title"><span class="icon">📸</span> Citizen Ground-Truth Verification</div>
+        <div class="scan-indicator"><span class="scan-dot"></span> Active Geofencing</div>
+      </div>
+      <div class="panel-body">
+        <div class="grid-2">
+          <div class="citizen-audit-card">
+            <div class="mb-16">
+              <strong class="text-cyan">Project:</strong> Highway 401 Repaving<br/>
+              <strong class="text-cyan">Claimed Status:</strong> 90% Completed<br/>
+              <strong class="text-cyan">Contractor:</strong> Apex Construction
+            </div>
+            <img src="https://images.unsplash.com/photo-1541888941255-29c469b44145?auto=format&fit=crop&w=800&q=80" class="ground-truth-img" alt="Ground Truth">
+            <div class="adp-verdict verified">
+              <i class="fas fa-check-circle"></i>
+              Citizen Upload Matches Government Claim
+            </div>
+            <div class="fs-12 text-muted mt-8">GPS: 19.0760° N, 72.8777° E · Time: 2026-03-13 14:22 · Hash: 0x8f2...7c1</div>
+          </div>
+          <div class="citizen-audit-card">
+            <div class="mb-16">
+              <strong class="text-cyan">Project:</strong> Sector 9 Community Center<br/>
+              <strong class="text-cyan">Claimed Status:</strong> "Construction Ongoing"<br/>
+              <strong class="text-cyan">Contractor:</strong> Zenith Infra
+            </div>
+            <img src="https://images.unsplash.com/photo-1590013330452-94776100868f?auto=format&fit=crop&w=800&q=80" class="ground-truth-img" alt="Ground Truth">
+            <div class="adp-verdict mismatch" style="background:rgba(239,68,68,0.1);color:var(--accent-red);border:1px solid rgba(239,68,68,0.3)">
+              <i class="fas fa-exclamation-triangle"></i>
+              MISMATCH: Physical Progress < 10%
+            </div>
+            <div class="fs-12 text-muted mt-8">GPS: 18.5204° N, 73.8567° E · Time: 2026-03-13 15:45 · Hash: 0x3a9...1d4</div>
+          </div>
+        </div>
+        <div class="drop-zone" style="margin-top:24px; padding:32px" onclick="toast('📸 Simulated Camera Opening...', 'info')">
+          <div class="drop-icon"><i class="fas fa-camera"></i></div>
+          <div class="drop-title">Upload Citizen Audit Proof</div>
+          <div class="drop-sub">Snap a geolocated photo to verify physical work progress on the Antigravity chain.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div><!-- /page-explorer -->
+
+
+<!-- ══════════════════════════════════════════
+     PAGE 4: ANOMALY WATCHDOG
+══════════════════════════════════════════ -->
+<div class="page" id="page-watchdog">
+  <div class="section" style="padding-top:100px">
+    <div class="section-header">
+      <div>
+        <div class="section-eyebrow">Pillar III · TensorFlow.js Under the Hood</div>
+        <h2 class="section-title">Deep Learning Anomaly Engine</h2>
+        <p class="section-sub">Instead of simple rules, LUMINA uses an unsupervised neural Autoencoder (trained via TensorFlow.js) to flag multidimensional inconsistencies across 40+ vector fields.</p>
+      </div>
+      <div>
+        <button class="btn btn-primary" id="btnDeepScan" onclick="runTFScan()"><span class="icon">🧠</span> Run Neural Net Scan</button>
+        <button class="btn btn-ghost" style="margin-top:12px" onclick="exportReport()">📥 Export Threat Report</button>
+      </div>
+    </div>
+
+    <!-- Live DL Training UI (Hidden initially) -->
+    <div class="panel" id="dlTrainingPanel" style="display:none;margin-bottom:28px;border-color:var(--accent-cyan)">
+      <div class="panel-header" style="background:rgba(0,212,255,0.05)">
+        <div class="panel-title"><span class="icon">⚙️</span> Live Model Training: Autoencoder</div>
+        <span class="scan-indicator" id="dlStatusIndicator"><span class="scan-dot"></span> Training...</span>
+      </div>
+      <div class="panel-body grid-2">
+        <div>
+          <div class="section-eyebrow" style="margin-bottom:8px">Metrics</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+            <div style="background:var(--bg-elevated);padding:12px;border-radius:var(--radius-md);text-align:center">
+              <div class="fs-12 text-muted">Epoch</div>
+              <div class="fw-600" style="font-size:18px;color:var(--accent-cyan)" id="tfEpoch">0 / 25</div>
+            </div>
+            <div style="background:var(--bg-elevated);padding:12px;border-radius:var(--radius-md);text-align:center">
+              <div class="fs-12 text-muted">Loss (MSE)</div>
+              <div class="fw-600 font-mono" style="font-size:18px;color:var(--accent-amber)" id="tfLoss">0.000</div>
+            </div>
+            <div style="background:var(--bg-elevated);padding:12px;border-radius:var(--radius-md);text-align:center">
+              <div class="fs-12 text-muted">Precision</div>
+              <div class="fw-600 font-mono" style="font-size:18px;color:var(--accent-green)" id="tfPrec">0.0%</div>
+            </div>
+          </div>
+          <div style="height:140px;position:relative"><canvas id="tfLossChart"></canvas></div>
+        </div>
+        <div style="display:flex;flex-direction:column;justify-content:center;padding-left:24px;border-left:1px solid var(--border-subtle)">
+          <div class="fw-600 text-cyan" style="margin-bottom:8px">Network Architecture (TensorFlow.js)</div>
+          <div class="font-mono fs-12 text-muted" style="line-height:1.6">
+            Model: Sequential Autoencoder<br/>
+            Input Dim: 42 (Transaction Vector)<br/>
+            Hidden Layers: Dense(32) → Dense(16) → Dense(32)<br/>
+            Output Dim: 42 (Reconstruction)<br/>
+            Optimizer: Adam (lr=0.001)<br/>
+            Threshold: > 95th Percentile Error
+          </div>
+          <div class="progress-bar" style="margin-top:16px"><div class="progress-fill" id="tfProgress" style="width:0%;background:var(--accent-cyan)"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Anomaly List -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><span class="icon">🚨</span> Active Anomaly Flags</div>
+          <div class="scan-indicator"><span class="scan-dot"></span> ML Scanning</div>
+        </div>
+        <div class="panel-body" id="anomalyList"></div>
+      </div>
+
+      <!-- ML Model Info + Chart -->
+      <div style="display:flex;flex-direction:column;gap:20px">
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title"><span class="icon">🧠</span> ML Risk Score Distribution</div>
+          </div>
+          <div class="panel-body">
+            <div class="chart-wrap"><canvas id="anomalyChart"></canvas></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title"><span class="icon">⚙️</span> Isolation Forest Parameters</div>
+          </div>
+          <div class="panel-body">
+            <div style="display:flex;flex-direction:column;gap:12px;font-size:13px">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span class="text-muted">Contamination Rate</span>
+                <span class="font-mono text-cyan">0.05 (5%)</span>
+              </div>
+              <div class="progress-bar"><div class="progress-fill" style="width:5%;background:linear-gradient(90deg,#00d4ff,#8b5cf6)"></div></div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span class="text-muted">N Estimators (Trees)</span>
+                <span class="font-mono text-cyan">200</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span class="text-muted">Features Analyzed</span>
+                <span class="font-mono text-cyan">47 dims</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span class="text-muted">Model Accuracy</span>
+                <span class="font-mono text-green">94.7%</span>
+              </div>
+              <div class="progress-bar"><div class="progress-fill" style="width:94.7%;background:linear-gradient(90deg,#10b981,#3b82f6)"></div></div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span class="text-muted">Last Training</span>
+                <span class="font-mono" style="font-size:11px">2026-03-13 08:00 UTC</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div><!-- /page-watchdog -->
+
+
+<!-- ══════════════════════════════════════════
+     PAGE 5: AI AUDITOR
+══════════════════════════════════════════ -->
+<div class="page" id="page-auditor">
+  <div class="section" style="padding-top:100px">
+    <div class="section-header">
+      <div>
+        <div class="section-eyebrow">Pillar IV · Conversational AI</div>
+        <h2 class="section-title">LUMINA AI Auditor</h2>
+        <p class="section-sub">Ask anything. LUMINA has read every budget document, every contract, every disbursement record. Your 24/7 audit partner.</p>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Chat -->
+      <div class="panel" style="overflow:hidden">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span style="font-size:22px">🤖</span> LUMINA Auditor
+            <div class="scan-indicator" style="margin-left:8px"><span class="scan-dot"></span> Thinking</div>
+          </div>
+        </div>
+        <div class="chat-container">
+          <div class="chat-messages" id="chatMessages">
+            <!-- Initial message inserted by JS -->
+          </div>
+          <div class="chat-input-row">
+            <input class="chat-input" id="chatInput" placeholder="Ask: Compare health spending per capita in District A vs District B..." onkeydown="if(event.key==='Enter') sendChat()"/>
+            <button class="btn btn-primary" onclick="sendChat()"><i class="fas fa-paper-plane"></i></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Suggested Queries + Chart Result -->
+      <div style="display:flex;flex-direction:column;gap:20px">
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title"><span class="icon">💡</span> Query Suggestions</div>
+          </div>
+          <div class="panel-body" style="display:flex;flex-direction:column;gap:8px" id="querySuggestions"></div>
+        </div>
+        <div class="panel" id="aiChartPanel" style="display:none">
+          <div class="panel-header">
+            <div class="panel-title" id="aiChartTitle"><span class="icon">📊</span> AI Generated Chart</div>
+          </div>
+          <div class="panel-body">
+            <div class="chart-wrap"><canvas id="aiChart"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div><!-- /page-auditor -->
+
+
+<!-- ══════════════════════════════════════════
+     PAGE 6: TRUST CHAIN
+══════════════════════════════════════════ -->
+<div class="page" id="page-chain">
+  <div class="section" style="padding-top:100px">
+    <div class="section-header">
+      <div>
+        <div class="section-eyebrow">Pillar II · Antigravity Blockchain</div>
+        <h2 class="section-title">Antigravity Trust Chain</h2>
+        <p class="section-sub">Every budget action creates an immutable Merkle hash on the Antigravity chain. Click "Verify on Chain" on any record. If the hash fails, the record is compromised.</p>
+      </div>
+      <button class="btn btn-primary" onclick="mineBlock()">
+        <i class="fas fa-hammer"></i> Mine New Block
+      </button>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:28px">
+      <div class="kpi-card cyan">
+        <div class="kpi-icon cyan"><i class="fas fa-cubes"></i></div>
+        <div class="kpi-value" style="color:var(--accent-cyan)" id="chainTotalBlocks">2,891</div>
+        <div class="kpi-label">Total Blocks</div>
+        <div class="kpi-trend delta-up"><i class="fas fa-arrow-up"></i> Antigravity Chain</div>
+      </div>
+      <div class="kpi-card green">
+        <div class="kpi-icon green"><i class="fas fa-shield-check"></i></div>
+        <div class="kpi-value" style="color:var(--accent-green)">100%</div>
+        <div class="kpi-label">Chain Integrity</div>
+        <div class="kpi-trend delta-up"><i class="fas fa-lock"></i> No tampering detected</div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Block Explorer -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><span class="icon">🔗</span> Block Explorer</div>
+          <div class="scan-indicator"><span class="scan-dot"></span> Live Feed</div>
+        </div>
+        <div class="panel-body" style="padding:16px">
+          <div class="chain-feed" id="fullChainFeed" style="max-height:480px"></div>
+        </div>
+      </div>
+
+      <!-- Smart Contract -->
+      <div style="display:flex;flex-direction:column;gap:20px">
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title"><span class="icon">📜</span> LUMINA Smart Contract</div>
+            <span style="font-size:10px;color:var(--text-muted);font-family:'JetBrains Mono',monospace">v2.4.1</span>
+          </div>
+          <div class="panel-body" style="padding:0; overflow:hidden">
+            <div style="background:var(--bg-void);height:320px;overflow-y:auto" id="contractViewer"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title"><span class="icon">✅</span> On-Chain Verification</div>
+          </div>
+          <div class="panel-body">
+            <div style="margin-bottom:12px;font-size:13px;color:var(--text-secondary)">Enter a transaction ID or hash to verify it on the Antigravity chain:</div>
+            <div style="display:flex;gap:8px">
+              <input class="input-field" id="verifyInput" placeholder="0x3f8ad92c..." />
+              <button class="btn btn-primary" onclick="verifyHash()"><i class="fas fa-magnifying-glass"></i> Verify</button>
+            </div>
+            <div id="verifyResult" style="margin-top:16px;font-size:13px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div><!-- /page-chain -->
+
+
+<!-- ══════════════════════════════════════════
+     PAGE 8: DEEP-SCAN PDF UPLOAD
+══════════════════════════════════════════ -->
+<div class="page" id="page-deepscan">
+  <div class="section" style="padding-top:100px">
+    <div class="section-header">
+      <div>
+        <div class="section-eyebrow">Pillar I · Vision-LLM OCR Pipeline</div>
+        <h2 class="section-title">Deep-Scan Ingestion Engine</h2>
+        <p class="section-sub">Upload any government PDF — scanned, dark, or image-based. Our Vision-LLM extracts, parses, and anchors every budget line item to the Antigravity chain.</p>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:28px">
+      <!-- Upload Zone -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><span class="icon">📄</span> Document Upload</div>
+          <span class="scan-indicator"><span class="scan-dot"></span> OCR Engine Ready</span>
+        </div>
+        <div class="panel-body">
+          <div id="dropZone" class="drop-zone" onclick="document.getElementById('pdfInput').click()" ondragover="event.preventDefault()" ondrop="handleDrop(event)">
+            <div class="drop-icon">📥</div>
+            <div class="drop-title">Drop your PDF here</div>
+            <div class="drop-sub">Supports scanned PDFs, image-PDFs, and TIFF bundles</div>
+            <button class="btn btn-primary" style="margin-top:16px">Browse Files</button>
+            <input type="file" id="pdfInput" accept=".pdf,.png,.jpg,.tiff" style="display:none" onchange="startScan(this)"/>
+          </div>
+          <!-- Pipeline Progress -->
+          <div id="scanPipeline" style="display:none;margin-top:20px">
+            <div id="pipelineSteps"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- OCR Result -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><span class="icon">🔍</span> Extracted Data Preview</div>
+          <button class="btn btn-success btn-sm" id="anchorBtn" style="display:none" onclick="anchorToChain()">⛓ Anchor to Chain</button>
+        </div>
+        <div class="panel-body" style="padding:0">
+          <div id="ocrResult" style="padding:24px;text-align:center;color:var(--text-muted)">
+            <div style="font-size:48px;margin-bottom:12px">🤖</div>
+            <div>Upload a document to begin extraction</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- XBRL Mapping Panel -->
+    <div class="panel" id="xbrlPanel" style="display:none">
+      <div class="panel-header">
+        <div class="panel-title"><span class="icon">🗂️</span> XBRL Standard Mapping (Context-Aware Parser)</div>
+        <span class="risk-badge low">PATENTED METHOD</span>
+      </div>
+      <div class="panel-body" style="padding:0">
+        <table class="data-table" id="xbrlTable">
+          <thead><tr><th>Extracted Line Item</th><th>Raw Text</th><th>XBRL Tag</th><th>Confidence</th><th>Chain Status</th></tr></thead>
+          <tbody id="xbrlBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div><!-- /page-deepscan -->
+
+
+<!-- ══════════════════════════════════════════
+     PAGE 9: ADP PATENT — Cross-Silo Reconciliation
+══════════════════════════════════════════ -->
+<div class="page" id="page-adp">
+  <div class="section" style="padding-top:100px">
+    <div class="section-header">
+      <div>
+        <div class="section-eyebrow">Patent Pending · ADP-2026-LUMINA</div>
+        <h2 class="section-title">Automated Discrepancy Protocol</h2>
+        <p class="section-sub">Cross-Silo Reconciliation: The world's first method to verify government expenditure by cross-referencing bank settlement hashes with satellite-imaged project progress.</p>
+      </div>
+      <span class="risk-badge" style="background:rgba(139,92,246,0.15);color:var(--accent-violet);border-color:rgba(139,92,246,0.3);font-size:13px;padding:8px 16px">🔬 WORLD FIRST</span>
+    </div>
+
+    <!-- Patent claim box -->
+    <div class="panel" style="margin-bottom:28px;border-color:rgba(139,92,246,0.25)">
+      <div class="panel-header" style="background:rgba(139,92,246,0.05)">
+        <div class="panel-title"><span class="icon">📜</span> Independent Claim 1 — Patent Application ADP-2026-LUMINA</div>
+      </div>
+      <div class="panel-body">
+        <p style="font-size:14px;line-height:1.9;color:var(--text-secondary);font-style:italic;border-left:3px solid var(--accent-violet);padding-left:20px">
+          "A computer-implemented method for verifying public sector expenditure integrity comprising: (a) ingesting structured and unstructured government expenditure filings via a Vision-LLM OCR pipeline; (b) generating a Merkle-tree hash of each extracted record and anchoring said hash to a distributed ledger; (c) acquiring third-party bank settlement confirmations for each expenditure event; (d) acquiring satellite or aerial imagery of the geographic coordinates associated with said expenditure; (e) applying computer-vision models to derive a physical progress score from said imagery; and (f) generating a reconciliation verdict by comparing the disbursed amount, settlement hash, and physical progress score — flagging discrepancies exceeding a configurable threshold as an Automated Discrepancy Alert."
+        </p>
+      </div>
+    </div>
+
+    <!-- 3-Source Reconciliation Engine -->
+    <div class="section-eyebrow" style="margin-bottom:16px">Live Reconciliation Demo</div>
+    <div id="adpProjects"></div>
+
+    <!-- How It Works -->
+    <div class="panel" style="margin-top:28px">
+      <div class="panel-header">
+        <div class="panel-title"><span class="icon">⚙️</span> ADP Pipeline — How It Works</div>
+      </div>
+      <div class="panel-body">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:20px;text-align:center">
+          <div class="adp-step">
+            <div class="adp-step-icon">📄</div>
+            <div class="adp-step-num">Step 1</div>
+            <div class="adp-step-title">Expenditure Filing</div>
+            <div class="adp-step-desc">Vision-LLM extracts budget items from government PDFs</div>
+          </div>
+          <div class="adp-arrow">→</div>
+          <div class="adp-step">
+            <div class="adp-step-icon">🏦</div>
+            <div class="adp-step-num">Step 2</div>
+            <div class="adp-step-title">Bank Settlement Hash</div>
+            <div class="adp-step-desc">Cross-reference with 3rd-party bank settlement confirmations</div>
+          </div>
+          <div class="adp-arrow">→</div>
+          <div class="adp-step">
+            <div class="adp-step-icon">🛰️</div>
+            <div class="adp-step-num">Step 3</div>
+            <div class="adp-step-title">Satellite Imagery</div>
+            <div class="adp-step-desc">CV model scores physical progress from aerial imagery</div>
+          </div>
+          <div class="adp-arrow">→</div>
+          <div class="adp-step">
+            <div class="adp-step-icon">⚖️</div>
+            <div class="adp-step-num">Step 4</div>
+            <div class="adp-step-title">ADP Verdict</div>
+            <div class="adp-step-desc">Automated reconciliation alert if any layer mismatches</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div><!-- /page-adp -->
+
+<!-- ══════════════════════════════════════════
+     PAGE 10: NEURAL FORECAST
+══════════════════════════════════════════ -->
+<div class="page" id="page-forecast">
+  <div class="section" style="padding-top:100px">
+    <div class="section-header">
+      <div>
+        <div class="section-eyebrow">Pillar VI · Predictive Modelling</div>
+        <h2 class="section-title">Neural Budget Forecasting</h2>
+        <p class="section-sub">Using a Long Short-Term Memory (LSTM) simulation, predict future budget depletion rates, potential cost overruns, and cash-flow bottlenecks before they happen.</p>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Controls -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><span class="icon">🎛️</span> Inference Parameters</div>
+        </div>
+        <div class="panel-body">
+          <div style="margin-bottom:20px">
+            <label class="fs-12 text-muted fw-600" style="display:block;margin-bottom:8px">Select Department Network</label>
+            <select class="search-input" id="fcDept" style="width:100%">
+              <option value="infra">Infrastructure & Public Works</option>
+              <option value="health">Healthcare & Sanitation</option>
+              <option value="edu">Education & Skill Dev</option>
+              <option value="rural">Rural Development</option>
+            </select>
+          </div>
+          <div style="margin-bottom:20px">
+            <label class="fs-12 text-muted fw-600" style="display:block;margin-bottom:8px">Prediction Horizon (Months)</label>
+            <div style="display:flex;align-items:center;gap:12px">
+              <input type="range" id="fcMonths" min="3" max="24" value="12" style="flex:1" oninput="document.getElementById('fcMonthVal').innerText=this.value+' mo'">
+              <span id="fcMonthVal" class="font-mono fw-600" style="width:50px">12 mo</span>
+            </div>
+          </div>
+          <div style="background:var(--bg-elevated);padding:16px;border-radius:var(--radius-md);margin-bottom:24px;border:1px solid var(--border-subtle)">
+            <div class="fs-12 fw-600 text-cyan" style="margin-bottom:8px">Active Neural Network</div>
+            <div class="font-mono text-muted" style="font-size:11px;line-height:1.6">
+              TF.js Backend: WebGL<br/>
+              Model: LSTM Sequence Predictor<br/>
+              Historical Window: 60 Months<br/>
+              Confidence Interval: 90%
+            </div>
+          </div>
+          <button class="btn btn-primary w-full" id="btnForecast" onclick="runForecast()"><span class="icon">🔮</span> Run Inference Matrix</button>
+        </div>
+      </div>
+
+      <!-- Chart View -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><span class="icon">📈</span> Predictive Trajectory</div>
+          <span class="scan-indicator" id="fcIndicator" style="display:none"><span class="scan-dot"></span> Calculating tensors...</span>
+        </div>
+        <div class="panel-body">
+          <div style="height:320px;position:relative"><canvas id="forecastChart"></canvas></div>
+          <div id="fcInsight" style="margin-top:20px;padding:16px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:var(--radius-md);color:var(--accent-amber);font-size:13px;display:none;align-items:flex-start;gap:12px">
+            <span style="font-size:20px">⚠️</span>
+            <div><strong>WARNING: Estimated Shortfall Detected.</strong> Based on current velocity patterns, the selected department is projected to exhaust allocated funds 3.2 months before fiscal year-end. Recommend reallocation of ₹1,240 Cr from reserves.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div><!-- /page-forecast -->
+
+
+<!-- ══════════════════════════════════════════
+     PAGE 11: ENTITY TRACKER (FORENSIC)
+══════════════════════════════════════════ -->
+<div class="page" id="page-entities">
+  <div class="section" style="padding-top:100px">
+    <div class="section-header">
+      <div>
+        <div class="section-eyebrow">Forensic Accounting · Follow the Money</div>
+        <h2 class="section-title">Contractor & Beneficiary Ledger</h2>
+        <p class="section-sub">Digital rap sheets for every individual and corporation receiving public funds. All records anchored to Antigravity.</p>
+      </div>
+      <div style="display:flex;gap:12px">
+        <button class="btn btn-ghost" onclick="toast('📥 Exporting Forensic Report...', 'info')">
+          <i class="fas fa-file-export"></i> Export CSV
+        </button>
+      </div>
+    </div>
+
+    <!-- Entity Search / Filter -->
+    <div class="panel" style="margin-bottom:28px">
+      <div class="panel-body">
+        <div class="grid-3">
+          <input class="input-field" placeholder="🔍 Search Contractor or Politician..." id="entitySearchInput" oninput="initEntityTracker()"/>
+          <select class="input-field" id="entityRiskFilter" onchange="initEntityTracker()">
+            <option value="ALL">All Risk Levels</option>
+            <option value="CRITICAL">Critical Only</option>
+            <option value="HIGH">High Risk</option>
+            <option value="MEDIUM">Medium Risk</option>
+            <option value="LOW">Low Risk</option>
+          </select>
+          <select class="input-field" id="entityYearFilter" onchange="initEntityTracker()">
+            <option value="2024">FY 2024</option>
+            <option value="2023">FY 2023</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div id="entityLayout" style="display:flex; gap:24px; align-items:flex-start">
+      <div id="entityList" style="flex:1">
+        <!-- Profiles injected by JS -->
+      </div>
+      
+      <!-- Side Panel: Original Reference View (Initially hidden or showing placeholder) -->
+      <div id="entityReferencePanel" class="panel" style="width:400px; position:sticky; top:100px; display:none">
+        <div class="panel-header">
+          <div class="panel-title"><span class="icon">📜</span> Original Reference</div>
+          <button class="btn btn-ghost btn-sm" onclick="closeReference()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="panel-body" style="padding:0">
+          <div id="referenceContent" style="height:600px; overflow-y:auto; padding:20px; font-family:'Courier New', monospace; font-size:12px; line-height:1.5; background:#0a0f1d; color:#94a3b8">
+            <!-- Simulated document content injected by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div><!-- /page-entities -->
+
+
+<!-- ══════════════════════════════════════════
+     PAGE 12: MONEY WEB (NETWORK GRAPH)
+══════════════════════════════════════════ -->
+<div class="page" id="page-web">
+  <div class="section" style="padding-top:100px">
+    <div class="section-header">
+      <div>
+        <div class="section-eyebrow">Pillar VI · Graph Analysis</div>
+        <h2 class="section-title">Money Web: Corruption Detection</h2>
+        <p class="section-sub">Visualizing the flow of tax dollars. Thicker lines represent larger disbursements. AI automatically flags shell company clusters.</p>
+      </div>
+    </div>
+
+    <div class="money-web-container" id="webContainer">
+      <canvas id="webCanvas" class="web-canvas"></canvas>
+      <div id="webInfoHover" class="node-info-hover"></div>
+      
+      <!-- Graph Legend -->
+      <div style="position:absolute; bottom:20px; left:20px; background:rgba(0,0,0,0.6); padding:12px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); font-size:11px; backdrop-filter:blur(5px)">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px">
+          <span style="width:10px; height:10px; border-radius:50%; background:var(--accent-cyan)"></span> Government Office
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px">
+          <span style="width:10px; height:10px; border-radius:50%; background:var(--accent-amber)"></span> Primary Contractor
+        </div>
+        <div style="display:flex; align-items:center; gap:8px">
+          <span style="width:10px; height:10px; border-radius:50%; background:var(--accent-red)"></span> Suspicious Sub-Contractor
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:28px">
+      <div class="panel-header">
+        <div class="panel-title">AI Cluster Findings</div>
+      </div>
+      <div class="panel-body">
+        <div id="webFindings" class="font-mono text-muted" style="font-size:12px; line-height:1.6">
+          <div class="adp-verdict mismatch" style="margin-bottom:12px">
+            <i class="fas fa-microchip"></i>
+            PATTERN DETECTED: 3 different winning bidders share the same corporate registration address in Mauritius.
+          </div>
+          <div class="adp-verdict verified" style="margin-bottom:0">
+            <i class="fas fa-link"></i>
+            89% of nodes have immutable Antigravity blockchain hashes.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div><!-- /page-web -->
+
+</div><!-- /app -->
+
+<script src="js/app.js"></script>
+</body>
+</html>
